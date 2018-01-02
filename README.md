@@ -1,7 +1,231 @@
-# Extended Kalman Filter Project Starter Code
+# Extended Kalman Filter Project
 Self-Driving Car Engineer Nanodegree Program
 
-In this project you will utilize a kalman filter to estimate the state of a moving object of interest with noisy lidar and radar measurements. Passing the project requires obtaining RMSE values that are lower that the tolerance outlined in the project rubric. 
+In this project I utilized a kalman filter to estimate the state of a moving object of interest with noisy lidar and radar measurements. I obtained RMSE values that are lower that the tolerance outlined in the project rubric. In the next sections I address the rubric requirements point by point.
+
+## Compiling
+
+Although this project should work on Windows and Linux, I did my coding on a Mac using the steps below. Building produces no errors, and one warning about finding the `libuv` library that is inconsequential.
+
+1. Clone this repo.
+2. Make a build directory: `mkdir build && cd build`
+3. Compile: `cmake .. && make` 
+   * On windows, you may need to run: `cmake .. -G "Unix Makefiles" && make`
+4. Run it: `./ExtendedKF `
+
+The following two images show the results of running the EKF on the two datasets.
+
+### Dataset 1
+
+![Simulator with dataset 1](images/dataset1.png)
+
+### Dataset 2
+
+![Simulator with dataset 2](images/dataset2.png)
+
+## Accuracy
+
+### px, py, vx, vy output coordinates must have an RMSE <= [.11, .11, 0.52, 0.52] when using the file: "obj_pose-laser-radar-synthetic-input.txt which is the same data file the simulator uses for Dataset 1"
+
+As can be seen in the images above, the EKF accuracy obtained is:
+
+- Dataset 1: RMSE <= [0.0973, 0.0855, 0.4513, 0.4399]
+- Dataset 2: RMSE <= [0.0726, 0.0965, 0.4216, 0.4932]
+
+## Following the correct algorithm
+
+### Your Sensor Fusion algorithm follows the general processing flow as taught in the preceding lessons.
+
+I based my solution on the starter project with no additional modifications.
+
+### Your Kalman Filter algorithm handles the first measurements appropriately.
+
+As can be seen below, I initialized the filter based on the first measurement. If the first measurement came from the Radar I converted the polar coordinates for ρ, φ, and ρdot into Cartesian and set both initial position and velocity. If the first measurement came from the Lidar, which provides position readings in Cartesian coordinates, I used those and set velocity to zero.
+
+```
+/*****************************************************************************
+  *  Initialization
+  ****************************************************************************/
+if (!is_initialized_) {
+  // first measurement
+  cout << "EKF: " << endl;
+  ekf_.x_ = VectorXd(4);
+  ekf_.x_ << 1, 1, 1, 1;
+
+  if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
+    /**
+    Convert radar from polar to cartesian coordinates and initialize state.
+    */
+    float ρ = measurement_pack.raw_measurements_[0];
+    float φ = measurement_pack.raw_measurements_[1];
+    float ρdot = measurement_pack.raw_measurements_[2];
+
+    float px_in = cos(φ) * ρ;
+    float py_in = sin(φ) * ρ;
+    float vx_in = cos(φ) * ρdot;
+    float vy_in = sin(φ) * ρdot;
+
+    ekf_.x_ << px_in, py_in, vx_in, vy_in;
+  }
+  else if (measurement_pack.sensor_type_ == MeasurementPackage::LASER) {
+    /**
+    Initialize state.
+    */
+    float px_in = measurement_pack.raw_measurements_[0];
+    float py_in = measurement_pack.raw_measurements_[1];
+
+    ekf_.x_ << px_in, py_in, 0, 0;
+  }
+
+  // done initializing, no need to predict or update
+  previous_timestamp_ = measurement_pack.timestamp_;
+  is_initialized_ = true;
+  return;
+}
+```
+
+### Your Kalman Filter algorithm first predicts then updates.
+
+First I calculate the elapsed time, the process noise covariance, Q matrix, and then run through the KF prediction calculations show below:
+
+```
+/*****************************************************************************
+  *  Prediction
+  ****************************************************************************/
+
+//compute the time elapsed between the current and previous measurements
+float dt = (measurement_pack.timestamp_ - previous_timestamp_) / 1000000.0;	//dt - expressed in seconds
+previous_timestamp_ = measurement_pack.timestamp_;  
+
+// F: Update the state transition matrix according to the new elapsed time
+ekf_.F_(0, 2) = dt;
+ekf_.F_(1, 3) = dt;
+
+// Q: Update the process noise covariance matrix
+//set the acceleration noise components
+float noise_ax = 9;
+float noise_ay = 9;
+
+float dt_2 = dt * dt;
+float dt_3 = dt_2 * dt;
+float dt_4 = dt_3 * dt;
+float A = dt_4/4 * noise_ax;
+float B = dt_3/2 * noise_ax;
+float C = dt_4/4 * noise_ay;
+float D = dt_3/2 * noise_ay;
+float E = dt_2 * noise_ax;
+float F = dt_2 * noise_ay;
+
+// ekf_.Q_ = MatrixXd(4, 4);
+ekf_.Q_ << A, 0, B, 0,
+            0, C, 0, D,
+            B, 0, E, 0,
+            0, D, 0, F;
+
+ekf_.Predict();
+```
+
+```
+void KalmanFilter::Predict() {
+	x_ = F_ * x_;
+	MatrixXd Ft = F_.transpose();
+	P_ = F_ * P_ * Ft + Q_;
+}
+```
+
+### Your Kalman Filter can handle radar and lidar measurements.
+
+Measurement updates are handled slightly differently depending on whether the data is from a Radar or Lidar reading. The covariance of the measurement noise for both Radar and Lidar was provided. In order to calculate the measurement function that maps the state vector, x, into the measurement space of the sensor, I used a linearized Jacobian for Radar, and a constant matrix for Lidar. Then, depending on the sensor type I ran through the KF formulas for Lidar and EKF formulas for Radar. The most important pieces of code are shown below:
+
+```
+/*****************************************************************************
+  *  Update
+  ****************************************************************************/
+
+if (measurement_pack.sensor_type_ == MeasurementPackage::RADAR) {
+  // Radar updates
+  // linearize measurement function h(x') and setup radar matrix H
+  Hj_ = tools.CalculateJacobian(ekf_.x_);
+  ekf_.H_ = Hj_;
+  ekf_.R_ = R_radar_;
+  ekf_.UpdateEKF(measurement_pack.raw_measurements_);
+} else {
+  // Laser updates
+  ekf_.H_ = H_laser_;
+  ekf_.R_ = R_laser_;
+  ekf_.Update(measurement_pack.raw_measurements_);
+}
+```
+
+```
+void KalmanFilter::Update(const VectorXd &z) {
+	VectorXd z_pred = H_ * x_;
+	VectorXd y = z - z_pred;
+
+	MatrixXd Ht = H_.transpose();
+	MatrixXd S = H_ * P_ * Ht + R_;
+	MatrixXd Si = S.inverse();
+	MatrixXd PHt = P_ * Ht;
+	MatrixXd K = PHt * Si;
+
+	//new estimate
+	x_ = x_ + (K * y);
+	long x_size = x_.size();
+	MatrixXd I = MatrixXd::Identity(x_size, x_size);
+	P_ = (I - K * H_) * P_;
+}
+
+void KalmanFilter::UpdateEKF(const VectorXd &z) {
+  // to calculate y, use h(x') to map the predicted x' from Cartesian coordinates to polar
+  // to calculate S, K, P, use Hj instead of H
+  float px = x_[0];
+  float py = x_[1];
+  float vx = x_[2];
+  float vy = x_[3];
+
+  float ρ = sqrt(px * px + py * py);
+  float φ = atan2(py, px);
+  float ρdot = (px * vx + py * vy) / ρ;
+
+  VectorXd z_pred = VectorXd(3);
+  z_pred << ρ, φ, ρdot;
+	VectorXd y = z - z_pred;
+
+  // cout << y[1] << " | ";
+
+  // φ, y[1], needs to be normalized so that its angle is between -π and π. This is done by adding or subtracting 2π until the value is in the correct range.
+
+  while (y[1] > M_PI) {
+    // cout << "subtracting ";
+    y[1] -= 2*M_PI;
+  }
+
+  while (y[1] < -M_PI) {
+    // cout << "adding ";
+    y[1] += 2*M_PI;
+  }
+
+  // cout << y[1] << endl;
+
+	MatrixXd Ht = H_.transpose();
+	MatrixXd S = H_ * P_ * Ht + R_;
+	MatrixXd Si = S.inverse();
+	MatrixXd PHt = P_ * Ht;
+	MatrixXd K = PHt * Si;
+
+	//new estimate
+	x_ = x_ + (K * y);
+	long x_size = x_.size();
+	MatrixXd I = MatrixXd::Identity(x_size, x_size);
+	P_ = (I - K * H_) * P_;
+}
+```
+
+### Your algorithm should avoid unnecessary calculations.
+
+While there is no calculation duplication that I am aware of, the `KalmanFilter::Update()` and `KalmanFilter::UpdateEKF()` could have been refactored to extract the common formula calculations into their own function.
+
+# Additional Material
 
 This project involves the Term 2 Simulator which can be downloaded [here](https://github.com/udacity/self-driving-car-sim/releases)
 

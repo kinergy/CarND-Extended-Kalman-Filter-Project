@@ -74,6 +74,8 @@ void KalmanFilter::UpdateEKF(const VectorXd &z) {
 
   // cout << y[1] << " | ";
 
+  // φ, y[1], needs to be normalized so that its angle is between -π and π. This is done by adding or subtracting 2π until the value is in the correct range.
+
   while (y[1] > M_PI) {
     // cout << "subtracting ";
     y[1] -= 2*M_PI;
