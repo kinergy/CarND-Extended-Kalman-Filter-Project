@@ -101,14 +101,14 @@ void FusionEKF::ProcessMeasurement(const MeasurementPackage &measurement_pack) {
       /**
       Convert radar from polar to cartesian coordinates and initialize state.
       */
-      float ρ = measurement_pack.raw_measurements_[0];
-      float φ = measurement_pack.raw_measurements_[1];
-      float ρdot = measurement_pack.raw_measurements_[2];
+      float rho = measurement_pack.raw_measurements_[0];
+      float phi = measurement_pack.raw_measurements_[1];
+      float rho_dot = measurement_pack.raw_measurements_[2];
 
-      float px_in = cos(φ) * ρ;
-      float py_in = sin(φ) * ρ;
-      float vx_in = cos(φ) * ρdot;
-      float vy_in = sin(φ) * ρdot;
+      float px_in = cos(phi) * rho;
+      float py_in = sin(phi) * rho;
+      float vx_in = cos(phi) * rho_dot;
+      float vy_in = sin(phi) * rho_dot;
 
       ekf_.x_ << px_in, py_in, vx_in, vy_in;
     }

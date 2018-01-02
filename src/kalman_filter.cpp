@@ -64,17 +64,17 @@ void KalmanFilter::UpdateEKF(const VectorXd &z) {
   float vx = x_[2];
   float vy = x_[3];
 
-  float ρ = sqrt(px * px + py * py);
-  float φ = atan2(py, px);
-  float ρdot = (px * vx + py * vy) / ρ;
+  float rho = sqrt(px * px + py * py);
+  float phi = atan2(py, px);
+  float rho_dot = (px * vx + py * vy) / rho;
 
   VectorXd z_pred = VectorXd(3);
-  z_pred << ρ, φ, ρdot;
+  z_pred << rho, phi, rho_dot;
 	VectorXd y = z - z_pred;
 
   // cout << y[1] << " | ";
 
-  // φ, y[1], needs to be normalized so that its angle is between -π and π. This is done by adding or subtracting 2π until the value is in the correct range.
+  // phi, y[1], needs to be normalized so that its angle is between -Pi and Pi. This is done by adding or subtracting 2*Pi until the value is in the correct range.
 
   while (y[1] > M_PI) {
     // cout << "subtracting ";
