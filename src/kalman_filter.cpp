@@ -1,5 +1,6 @@
 #include "kalman_filter.h"
-
+// #include <iostream>
+// using namespace std;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
@@ -37,6 +38,7 @@ void KalmanFilter::Update(const VectorXd &z) {
   */
 	VectorXd z_pred = H_ * x_;
 	VectorXd y = z - z_pred;
+
 	MatrixXd Ht = H_.transpose();
 	MatrixXd S = H_ * P_ * Ht + R_;
 	MatrixXd Si = S.inverse();
@@ -55,7 +57,44 @@ void KalmanFilter::UpdateEKF(const VectorXd &z) {
   TODO:
     * update the state by using Extended Kalman Filter equations
   */
-  // *******************************
-  // *******************************
-  // *******************************
+  // to calculate y, use h(x') to map the predicted x' from Cartesian coordinates to polar
+  // to calculate S, K, P, use Hj instead of H
+  float px = x_[0];
+  float py = x_[1];
+  float vx = x_[2];
+  float vy = x_[3];
+
+  float ρ = sqrt(px * px + py * py);
+  float φ = atan2(py, px);
+  float ρdot = (px * vx + py * vy) / ρ;
+
+  VectorXd z_pred = VectorXd(3);
+  z_pred << ρ, φ, ρdot;
+	VectorXd y = z - z_pred;
+
+  // cout << y[1] << " | ";
+
+  while (y[1] > M_PI) {
+    // cout << "subtracting ";
+    y[1] -= 2*M_PI;
+  }
+
+  while (y[1] < -M_PI) {
+    // cout << "adding ";
+    y[1] += 2*M_PI;
+  }
+
+  // cout << y[1] << endl;
+
+	MatrixXd Ht = H_.transpose();
+	MatrixXd S = H_ * P_ * Ht + R_;
+	MatrixXd Si = S.inverse();
+	MatrixXd PHt = P_ * Ht;
+	MatrixXd K = PHt * Si;
+
+	//new estimate
+	x_ = x_ + (K * y);
+	long x_size = x_.size();
+	MatrixXd I = MatrixXd::Identity(x_size, x_size);
+	P_ = (I - K * H_) * P_;
 }
